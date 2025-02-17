@@ -1,7 +1,7 @@
 #ifdef _WIN32
-#define EXPORT __declspec(dllexport)
+    #define EXPORT __declspec(dllexport)
 #else
-#define EXPORT
+    #define EXPORT
 #endif
 
 EXPORT const char* print_message() 

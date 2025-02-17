@@ -10,9 +10,14 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 typedef const char* (*PrintMessageFunc)();
 
+/* 
+    Dynamic Module stuff 
+    TODO: put them all in a single struct
+*/
 #ifdef _WIN32
     HMODULE lib_handle = NULL;
 #else
@@ -20,15 +25,17 @@ typedef const char* (*PrintMessageFunc)();
 #endif
 
 PrintMessageFunc print_message_ptr = NULL;
+uint64_t last_change;
 
+/* --------------------------------------- */
+
+/* Terminal RAW mode stuff for linux */
 #ifndef _WIN32
     struct termios orig_termios;
-    void restore_terminal(void) {
+    void restore_terminal(void) 
+    {
         tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios);
     }
-#endif
-
-#ifndef _WIN32
     void init_terminal(void)
     {
         tcgetattr(STDIN_FILENO, &orig_termios);
@@ -39,7 +46,24 @@ PrintMessageFunc print_message_ptr = NULL;
     }
 #endif
 
+/* Get the last modification time of a file */
+uint64_t get_last_change(const char *path)
+{
+    #ifdef _WIN32
+        WIN32_FILE_ATTRIBUTE_DATA attr;
+        GetFileAttributesExA(path, GetFileExInfoStandard, &attr);
+        ULARGE_INTEGER ull;
+        ull.LowPart = attr.ftLastWriteTime.dwLowDateTime;
+        ull.HighPart = attr.ftLastWriteTime.dwHighDateTime;
+        return ull.QuadPart;
+    #else
+        struct stat attr;
+        stat(path, &attr);
+        return (long long)attr.st_mtime;
+    #endif
+}
 
+/* TODO: check for compilation errors */
 void compile_library()
 {
     #ifdef _WIN32
@@ -49,6 +73,7 @@ void compile_library()
     #endif
 }
 
+/* TODO: don't hardcode paths */
 int load_library() 
 {
     #ifdef _WIN32
@@ -72,9 +97,9 @@ int load_library()
         printf("Failed to find print_message\n");
 
         #ifdef _WIN32
-                FreeLibrary(lib_handle);
+            FreeLibrary(lib_handle);
         #else
-                dlclose(lib_handle);
+            dlclose(lib_handle);
         #endif
 
         lib_handle = NULL;
@@ -102,6 +127,7 @@ int key_pressed()
     #ifdef _WIN32
         return _kbhit();
     #else
+        /* Non-blocking way to check for user input */
         struct timeval tv = {0, 0};
         fd_set fds;
         FD_ZERO(&fds);
@@ -121,7 +147,7 @@ char get_key()
     #endif
 }
 
-int main() 
+int main(void) 
 {
     #ifndef _WIN32
         init_terminal();
@@ -140,13 +166,15 @@ int main()
         } else {
             printf("No message loaded\n");
         }
-
+        
+        /* Reload library when a certain key is pressed */
         if (key_pressed()) 
         {
             char c = get_key();
             if (c == 'r' || c == 'R') 
             {
                 printf("Reloading...\n");
+                
                 unload_library();
                 compile_library();
                 if (load_library()) {
@@ -158,9 +186,9 @@ int main()
         }
 
         #ifdef _WIN32
-                Sleep(1000);
+            Sleep(1000);
         #else
-                sleep(1);
+            sleep(1);
         #endif
     }
 
